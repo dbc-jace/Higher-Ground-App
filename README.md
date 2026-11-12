@@ -22,11 +22,26 @@ Until this is done the app runs in **demo mode**, with data saved on one device 
 
 The free "Spark" plan allows 50,000 reads and 20,000 writes per day, far more than a youth group needs. No credit card is required.
 
-## Put it online (GitHub Pages, free)
+## Put it online (free, works with a private repo)
 
-1. Merge this code into the repo's main branch.
-2. On GitHub, go to **Settings → Pages**, set Source to **Deploy from a branch**, choose `main` and `/ (root)`, and click **Save**.
-3. After a minute the app is live at `https://<your-username>.github.io/Higher-Ground-App/`. Share that link with leaders.
+GitHub Pages needs a paid plan for private repos, so use one of these free options instead.
+
+### Option A: Netlify (easiest, all in the browser, auto-updates)
+1. Go to <https://app.netlify.com>, sign up with GitHub, and choose **Add new site → Import an existing project → GitHub**.
+2. Pick `Higher-Ground-App` and give Netlify access to it when asked.
+3. Set the branch to deploy to `main`, leave **Build command** empty, set **Publish directory** to `.`, and click **Deploy**.
+4. You'll get a link like `https://something.netlify.app`. You can rename it under **Site configuration → Change site name** (e.g. `higher-ground-points`).
+
+Every time the code changes on `main`, Netlify updates the site on its own.
+
+### Option B: Firebase Hosting (same Google project as the database, needs a computer)
+```
+npm install -g firebase-tools
+firebase login
+firebase use --add            # pick your project
+firebase deploy
+```
+You get a link like `https://<project-id>.web.app`. Run `firebase deploy` again after any code change. This also publishes `firestore.rules`.
 
 On a phone, use **Share → Add to Home Screen** so it opens like an app.
 
