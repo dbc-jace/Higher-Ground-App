@@ -1,6 +1,6 @@
-import { createStore } from './store.js?v=2026.11.12-4';
+import { createStore } from './store.js?v=2026.11.12-5';
 
-const APP_VERSION = '2026.11.12-4';
+const APP_VERSION = '2026.11.12-5';
 
 const COLLECTIONS = ['people', 'categories', 'leaders', 'entries', 'attendance', 'settings'];
 
@@ -265,11 +265,22 @@ function viewBoard() {
     </ol>`}`;
 }
 
+const UI_KEY = 'hgui_open';
+const openSections = (() => { try { return new Set(JSON.parse(localStorage.getItem(UI_KEY)) || []); } catch { return new Set(); } })();
+function isOpen(k) {
+  if (k === 'people' && state.mergeFrom) return true;
+  if (k === 'import' && state.importPreview) return true;
+  return openSections.has(k);
+}
+
 function viewSettings() {
   const myEmail = state.user.email;
   return `
-    <section class="card">
-      <h2>People</h2>
+    <section class="card fold ${isOpen('people') ? 'open' : ''}">
+      <button class="fold-head" data-act="fold" data-k="people" aria-expanded="${isOpen('people')}">
+        <h2>People</h2><span class="count">${state.people.length}</span><span class="caret">›</span>
+      </button>
+      <div class="fold-body">
       ${mergePanelHtml()}
       <form data-form="addPerson" class="row">
         <input name="name" placeholder="Name" required><button class="primary">Add</button>
@@ -281,10 +292,14 @@ function viewSettings() {
           <button class="x" data-act="del" data-col="people" data-id="${p.id}" data-name="${esc(p.name)}" aria-label="Delete">✕</button>
         </li>`).join('')}
       </ul>
+      </div>
     </section>
 
-    <section class="card">
-      <h2>Point categories</h2>
+    <section class="card fold ${isOpen('categories') ? 'open' : ''}">
+      <button class="fold-head" data-act="fold" data-k="categories" aria-expanded="${isOpen('categories')}">
+        <h2>Point categories</h2><span class="count">${state.categories.length}</span><span class="caret">›</span>
+      </button>
+      <div class="fold-body">
       <p class="muted small">Each category becomes a button. Changing points only affects new taps.</p>
       <form data-form="addCategory" class="row">
         <input name="name" placeholder="Category" required>
@@ -300,17 +315,25 @@ function viewSettings() {
           <button class="x" data-act="del" data-col="categories" data-id="${c.id}" data-name="${esc(c.name)}" aria-label="Delete">✕</button>
         </li>`).join('')}
       </ul>
+      </div>
     </section>
 
-    <section class="card">
-      <h2>Attendance</h2>
+    <section class="card fold ${isOpen('attendance') ? 'open' : ''}">
+      <button class="fold-head" data-act="fold" data-k="attendance" aria-expanded="${isOpen('attendance')}">
+        <h2>Attendance</h2><span class="count">${attendancePoints()} pts</span><span class="caret">›</span>
+      </button>
+      <div class="fold-body">
       <label class="row">Points for being here
         <input type="number" inputmode="numeric" class="pts" value="${attendancePoints()}" data-col="settings" data-id="main" data-field="attendancePoints">
       </label>
+      </div>
     </section>
 
-    <section class="card">
-      <h2>Leaders</h2>
+    <section class="card fold ${isOpen('leaders') ? 'open' : ''}">
+      <button class="fold-head" data-act="fold" data-k="leaders" aria-expanded="${isOpen('leaders')}">
+        <h2>Leaders</h2><span class="count">${state.leaders.length}</span><span class="caret">›</span>
+      </button>
+      <div class="fold-body">
       <p class="muted small">Only these emails can sign in. Each leader signs in with Google or creates an email account using the same address.</p>
       <form data-form="addLeader">
         <input name="name" placeholder="Name" required>
@@ -325,23 +348,32 @@ function viewSettings() {
           <button class="x" data-act="del" data-col="leaders" data-id="${esc(l.id)}" data-name="${esc(l.name)}" aria-label="Delete">✕</button>` : '<small class="muted">you</small>'}
         </li>`).join('')}
       </ul>
+      </div>
     </section>
 
-    <section class="card">
-      <h2>Import</h2>
+    <section class="card fold ${isOpen('import') ? 'open' : ''}">
+      <button class="fold-head" data-act="fold" data-k="import" aria-expanded="${isOpen('import')}">
+        <h2>Import</h2><span class="caret">›</span>
+      </button>
+      <div class="fold-body">
       <p class="muted small">Paste a list (or copy two columns straight from Google Sheets). Put <b>CATEGORIES</b> on its own line, then one "name, points" per line. Then <b>KIDS</b> on its own line, then one "name, current total" per line. Totals are added as a one-time "Starting total" that counts toward All time. Optional: <b>ATTENDANCE</b>, then "name: 2026-09-16, 2026-09-23" to record past weeks attended (no extra points).</p>
       ${state.importPreview ? `<div id="import-preview">${importPreviewHtml()}</div>` : `
       <form data-form="importPreview">
         <textarea name="text" rows="8" placeholder="CATEGORIES&#10;Memory Verse, 10&#10;Brought Bible, 5&#10;KIDS&#10;Sam, 120&#10;Ava, 85" required></textarea>
         <button class="primary wide">Preview import</button>
       </form>`}
+      </div>
     </section>
 
-    <section class="card">
-      <h2>Backup</h2>
+    <section class="card fold ${isOpen('backup') ? 'open' : ''}">
+      <button class="fold-head" data-act="fold" data-k="backup" aria-expanded="${isOpen('backup')}">
+        <h2>Backup</h2><span class="caret">›</span>
+      </button>
+      <div class="fold-body">
       <button class="ghost wide" data-act="export">Download all points (CSV)</button>
-      <p class="muted small center">App version ${APP_VERSION}</p>
-    </section>`;
+      </div>
+    </section>
+    <p class="muted small center">App version ${APP_VERSION}</p>`;
 }
 
 const emptyState = (title, sub) => `<div class="center muted empty"><p><strong>${title}</strong></p><p>${sub}</p></div>`;
@@ -436,6 +468,11 @@ const actions = {
     cats.forEach((c, k) => { if (c.order !== k) store.update('categories', c.id, { order: k }); });
   },
   importCancel: () => { state.importPreview = null; },
+  fold: (d) => {
+    if (isOpen(d.k)) { openSections.delete(d.k); if (d.k === 'people') state.mergeFrom = null; if (d.k === 'import') state.importPreview = null; }
+    else openSections.add(d.k);
+    try { localStorage.setItem(UI_KEY, JSON.stringify([...openSections])); } catch { /* ignore */ }
+  },
   setAllKids: (d) => { state.showAllKids = d.v === '1'; },
   mergeStart: (d) => { state.mergeFrom = d.id; window.scrollTo({ top: 0, behavior: 'smooth' }); },
   mergeCancel: () => { state.mergeFrom = null; },

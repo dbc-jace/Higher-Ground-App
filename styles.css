@@ -134,3 +134,13 @@ textarea { width: 100%; padding: 12px; border: 1px solid var(--line); border-rad
 .person-nav { display: flex; justify-content: space-between; align-items: center; margin: -4px 0 4px; }
 .person-nav .link { font-size: 1.05rem; padding: 8px 0; }
 .person-head { margin-top: 4px; }
+
+/* Collapsible settings sections */
+.fold { padding: 0; }
+.fold-head { width: 100%; display: flex; align-items: center; gap: 10px; padding: 16px; text-align: left; }
+.fold-head h2 { margin: 0; flex: 1; }
+.fold-head .count { background: var(--line); color: var(--muted); font-size: .8rem; font-weight: 600; padding: 2px 9px; border-radius: 999px; }
+.fold-head .caret { color: var(--muted); font-size: 1.4rem; line-height: 1; transition: transform .15s; }
+.fold.open .fold-head .caret { transform: rotate(90deg); }
+.fold-body { display: none; padding: 0 16px 16px; }
+.fold.open .fold-body { display: block; }
