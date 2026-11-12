@@ -1,6 +1,6 @@
-import { createStore } from './store.js?v=2026.11.12-2';
+import { createStore } from './store.js?v=2026.11.12-3';
 
-const APP_VERSION = '2026.11.12-2';
+const APP_VERSION = '2026.11.12-3';
 
 const COLLECTIONS = ['people', 'categories', 'leaders', 'entries', 'attendance', 'settings'];
 
@@ -669,6 +669,18 @@ app.addEventListener('focusout', () => {
     pendingRender = false;
     render();
   }, 400);
+});
+
+// If the app sat open in the background past Tuesday night, jump to the new week when it's reopened.
+let lastSeenWeek = state.week;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  const now = weekStart(new Date());
+  if (now !== lastSeenWeek) {
+    if (state.week === lastSeenWeek) state.week = now; // only if they were on the then-current week
+    lastSeenWeek = now;
+    render();
+  }
 });
 
 /* ---------- start ---------- */
