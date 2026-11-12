@@ -101,3 +101,17 @@ label.row { display: flex; justify-content: space-between; font-weight: 500; }
   transition: .2s; z-index: 30; max-width: calc(100% - 32px); box-shadow: 0 6px 20px rgba(0,0,0,.25); }
 .toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
 .toast button { color: #a5b4fc; font-weight: 700; padding: 6px 8px; }
+
+/* sign-in */
+.logo { width: 64px; height: 64px; display: block; margin: 0 auto 8px; }
+.card.narrow { margin-top: 10vh; }
+.card.narrow > p { margin: 10px 0; }
+.card.narrow .wide { margin-top: 10px; }
+.card.narrow form { margin-top: 6px; }
+.card.narrow form .row { margin-top: 2px; }
+.google { display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: 600; }
+.or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: .85rem; margin: 16px 0 6px; }
+.or::before, .or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+.msg { background: var(--accent-soft); color: var(--text); padding: 10px 12px; border-radius: 10px; font-size: .9rem; }
+.email { display: block; color: var(--muted); font-size: .8rem; word-break: break-all; }
+.card form > input { margin-bottom: 8px; }

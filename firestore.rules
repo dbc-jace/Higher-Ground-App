@@ -1,10 +1,42 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Anyone who has the app link can read and write these collections.
-    // Leader PINs are checked inside the app (a "keep honest people honest" lock).
-    match /{col}/{id} {
-      allow read, write: if col in ['people', 'categories', 'leaders', 'entries', 'attendance', 'settings'];
+
+    function signedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
     }
+    function myEmail() { return request.auth.token.email.lower(); }
+    function leaderPath(email) { return /databases/$(database)/documents/leaders/$(email); }
+    function setupPath() { return /databases/$(database)/documents/meta/setup; }
+    function isLeader() { return signedIn() && exists(leaderPath(myEmail())); }
+    function isAdmin() { return isLeader() && get(leaderPath(myEmail())).data.admin == true; }
+
+    // One-time setup: the first signed-in person becomes admin.
+    match /meta/setup {
+      allow read: if signedIn();
+      allow create: if signedIn() && !exists(setupPath())
+        && request.resource.data.owner == myEmail()
+        && existsAfter(leaderPath(myEmail()));
+    }
+
+    // Leader list: only these emails get in. Admins manage it.
+    match /leaders/{email} {
+      allow read: if (signedIn() && email == myEmail()) || isLeader();
+      allow create: if signedIn() && email == myEmail() && !exists(setupPath())
+        && getAfter(setupPath()).data.owner == myEmail()
+        && request.resource.data.admin == true;
+      allow create, update, delete: if isAdmin() && email != myEmail();
+    }
+
+    // People, categories, settings: leaders read, admins change.
+    match /people/{id}     { allow read: if isLeader(); allow write: if isAdmin(); }
+    match /categories/{id} { allow read: if isLeader(); allow write: if isAdmin(); }
+    match /settings/{id}   { allow read: if isLeader(); allow write: if isAdmin(); }
+
+    // Points and attendance: any leader can enter.
+    match /entries/{id}    { allow read, write: if isLeader(); }
+    match /attendance/{id} { allow read, write: if isLeader(); }
+
+    // Everything else is closed.
   }
 }

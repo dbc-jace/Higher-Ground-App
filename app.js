@@ -1,7 +1,6 @@
 import { createStore } from './store.js';
 
 const COLLECTIONS = ['people', 'categories', 'leaders', 'entries', 'attendance', 'settings'];
-const SESSION_KEY = 'hgsess_leader';
 
 const app = document.getElementById('app');
 const toastEl = document.getElementById('toast');
@@ -34,14 +33,16 @@ const state = {
   week: weekStart(new Date()),
   personId: null,
   board: 'week',
-  loginPick: null,
-  leaderId: (() => { try { return localStorage.getItem(SESSION_KEY); } catch { return null; } })(),
+  user: null,        // { email, verified, name } from sign-in
+  access: null,      // null | 'checking' | 'ok' | 'none'
+  setupDone: true,   // has an admin claimed this app yet?
+  authMsg: '',
 };
 let store;
 
 const settings = () => state.settings.find((s) => s.id === 'main') || {};
 const attendancePoints = () => Number(settings().attendancePoints ?? 10);
-const me = () => state.leaders.find((l) => l.id === state.leaderId);
+const me = () => state.leaders.find((l) => l.id === state.user?.email);
 const people = () => [...state.people].sort(byName);
 const categories = () => [...state.categories].sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || byName(a, b));
 
@@ -50,20 +51,6 @@ function totals(weekId) {
   for (const e of state.entries) if ((!weekId || e.weekId === weekId) && t.has(e.personId)) t.get(e.personId).pts += Number(e.points) || 0;
   for (const a of state.attendance) if ((!weekId || a.weekId === weekId) && t.has(a.personId)) { const r = t.get(a.personId); r.pts += Number(a.points) || 0; r.att++; }
   return t;
-}
-
-async function hashPin(pin) {
-  const text = 'higher-ground:' + pin;
-  if (crypto.subtle) {
-    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-    return [...new Uint8Array(buf)].map((x) => x.toString(16).padStart(2, '0')).join('');
-  }
-  return 'plain:' + text;
-}
-
-function setSession(id) {
-  state.leaderId = id;
-  try { id ? localStorage.setItem(SESSION_KEY, id) : localStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
 }
 
 /* ---------- toast & banner ---------- */
@@ -86,9 +73,12 @@ function showError() {
 
 /* ---------- views ---------- */
 function render() {
-  if (state.loaded.size < COLLECTIONS.length) { app.innerHTML = '<p class="center muted">Loading…</p>'; return; }
-  if (!state.leaders.length) return renderSetup();
-  if (!me()) return renderLogin();
+  if (!state.user) return renderSignIn();
+  if (!state.user.verified) return renderVerify();
+  if (state.access === 'none') return renderNoAccess();
+  if (state.access !== 'ok' || state.loaded.size < COLLECTIONS.length || !me()) {
+    app.innerHTML = '<p class="center muted">Loading…</p>'; return;
+  }
 
   const leader = me();
   if (state.tab === 'settings' && !leader.admin) state.tab = 'points';
@@ -104,7 +94,7 @@ function render() {
       <h1>Higher Ground</h1>
       <button class="link" data-act="logout">${esc(leader.name)} · Log out</button>
     </header>
-    ${store.mode === 'local' ? '<div class="demo">Demo mode: data is saved on this device only. See README to turn on sharing.</div>' : ''}
+    ${store.mode === 'local' ? '<div class="demo">Demo mode: no login, and data is saved on this device only. See README to turn on sharing.</div>' : ''}
     ${showWeek ? `
       <nav class="week">
         <button data-act="week" data-n="-1" aria-label="Previous week">◀</button>
@@ -118,35 +108,51 @@ function render() {
     </nav>`;
 }
 
-function renderSetup() {
-  app.innerHTML = `
-    <div class="card narrow">
-      <h1>Higher Ground</h1>
-      <p>Welcome! Create the admin account. You'll add other leaders, people, and point categories afterward.</p>
-      <form data-form="setup">
-        <label>Your name<input name="name" required autocomplete="name"></label>
-        <label>PIN<input name="pin" required inputmode="numeric" pattern="[0-9]{4,8}" title="4–8 digits" type="password"></label>
-        <button class="primary">Create admin</button>
-      </form>
-    </div>`;
+const authCard = (inner) => `
+  <div class="card narrow">
+    <img src="icon.svg" alt="" class="logo">
+    <h1>Higher Ground</h1>
+    ${state.authMsg ? `<p class="msg">${esc(state.authMsg)}</p>` : ''}
+    ${inner}
+  </div>`;
+
+function renderSignIn() {
+  app.innerHTML = authCard(`
+    <p class="muted">Leaders sign in to enter points.</p>
+    <button class="ghost wide google" data-act="google">
+      <svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.2C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.8c4.3-4 6.9-9.9 6.9-17.2z"/><path fill="#FBBC05" d="M10.6 28.5c-.5-1.4-.8-2.9-.8-4.5s.3-3.1.8-4.5l-7.9-6.2C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.2z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.8c-2.1 1.4-4.8 2.3-8.5 2.3-6.2 0-11.5-4.1-13.4-9.8l-7.9 6.2C6.6 42.6 14.6 48 24 48z"/></svg>
+      Sign in with Google</button>
+    <div class="or"><span>or use email</span></div>
+    <form data-form="emailAuth">
+      <input name="email" type="email" placeholder="Email" required autocomplete="email">
+      <input name="password" type="password" placeholder="Password (6+ characters)" required minlength="6" autocomplete="current-password">
+      <div class="row">
+        <button class="primary grow" name="mode" value="in">Sign in</button>
+        <button class="ghost grow" name="mode" value="up">Create account</button>
+      </div>
+    </form>
+    <button class="link" data-act="forgot">Forgot password?</button>`);
 }
 
-function renderLogin() {
-  const pick = state.leaders.find((l) => l.id === state.loginPick);
-  app.innerHTML = `
-    <div class="card narrow">
-      <h1>Higher Ground</h1>
-      ${pick ? `
-        <p>Hi ${esc(pick.name)}! Enter your PIN.</p>
-        <form data-form="login">
-          <input name="pin" required inputmode="numeric" type="password" autofocus aria-label="PIN">
-          <button class="primary">Log in</button>
-        </form>
-        <button class="link" data-act="loginBack">Not you?</button>` : `
-        <p>Who's entering points?</p>
-        <div class="chips">${[...state.leaders].sort(byName).map((l) => `<button class="chip" data-act="loginPick" data-id="${l.id}">${esc(l.name)}</button>`).join('')}</div>`}
-    </div>`;
-  app.querySelector('input[name=pin]')?.focus();
+function renderVerify() {
+  app.innerHTML = authCard(`
+    <p>We emailed a link to <strong>${esc(state.user.email)}</strong>. Tap it to confirm your email, then come back here.</p>
+    <button class="primary wide" data-act="verified">I've confirmed it</button>
+    <button class="ghost wide" data-act="resend">Send the email again</button>
+    <button class="link" data-act="logout">Use a different account</button>`);
+}
+
+function renderNoAccess() {
+  app.innerHTML = authCard(state.setupDone ? `
+    <p>You're signed in as <strong>${esc(state.user.email)}</strong>, but that email isn't on the leader list yet.</p>
+    <p class="muted">Ask an admin to add this exact email in Settings → Leaders. This page will open automatically once they do.</p>
+    <button class="link" data-act="logout">Sign out</button>` : `
+    <p><strong>Welcome!</strong> No one has set up this app yet. You'll be the admin, and you can add other leaders afterward.</p>
+    <form data-form="setup">
+      <input name="name" placeholder="Your name" required value="${esc(state.user.name)}">
+      <button class="primary">Set up as admin</button>
+    </form>
+    <button class="link" data-act="logout">Sign out</button>`);
 }
 
 function viewPoints() {
@@ -211,7 +217,7 @@ function viewBoard() {
 }
 
 function viewSettings() {
-  const myId = state.leaderId;
+  const myEmail = state.user.email;
   return `
     <section class="card">
       <h2>People</h2>
@@ -254,19 +260,18 @@ function viewSettings() {
 
     <section class="card">
       <h2>Leaders</h2>
+      <p class="muted small">Only these emails can sign in. Each leader signs in with Google or creates an email account using the same address.</p>
       <form data-form="addLeader">
-        <div class="row">
-          <input name="name" placeholder="Name" required>
-          <input name="pin" placeholder="PIN" required inputmode="numeric" pattern="[0-9]{4,8}" title="4–8 digits" class="pts">
-        </div>
+        <input name="name" placeholder="Name" required>
+        <input name="email" type="email" placeholder="Email" required autocapitalize="off">
         <label class="check"><input type="checkbox" name="admin"> Admin (can change settings)</label>
         <button class="primary wide">Add leader</button>
       </form>
       <ul class="edit">
         ${[...state.leaders].sort(byName).map((l) => `<li>
-          <span class="grow">${esc(l.name)} ${l.admin ? '<em class="badge">admin</em>' : ''}</span>
-          <button class="ghost small" data-act="resetPin" data-id="${l.id}">New PIN</button>
-          ${l.id !== myId ? `<button class="x" data-act="del" data-col="leaders" data-id="${l.id}" data-name="${esc(l.name)}" aria-label="Delete">✕</button>` : ''}
+          <span class="grow">${esc(l.name)} ${l.admin ? '<em class="badge">admin</em>' : ''}<small class="email">${esc(l.id)}</small></span>
+          ${l.id !== myEmail ? `<button class="ghost small" data-act="toggleAdmin" data-id="${esc(l.id)}">${l.admin ? 'Remove admin' : 'Make admin'}</button>
+          <button class="x" data-act="del" data-col="leaders" data-id="${esc(l.id)}" data-name="${esc(l.name)}" aria-label="Delete">✕</button>` : '<small class="muted">you</small>'}
         </li>`).join('')}
       </ul>
     </section>
@@ -284,7 +289,7 @@ function addEntry(person, name, points, categoryId = null) {
   const id = store.add('entries', {
     weekId: state.week, personId: person.id, personName: person.name,
     categoryId, categoryName: name, points,
-    leaderId: state.leaderId, leaderName: me()?.name || '', ts: Date.now(),
+    leaderEmail: state.user.email, leaderName: me()?.name || '', ts: Date.now(),
   });
   navigator.vibrate?.(15);
   toast(`${points >= 0 ? '+' : ''}${points} ${esc(name)} → ${esc(person.name)}`, () => store.remove('entries', id));
@@ -295,9 +300,27 @@ const actions = {
   week: (d) => { state.week = shiftWeek(state.week, Number(d.n)); },
   thisWeek: () => { state.week = weekStart(new Date()); },
   board: (d) => { state.board = d.v; },
-  logout: () => { setSession(null); state.loginPick = null; },
-  loginPick: (d) => { state.loginPick = d.id; },
-  loginBack: () => { state.loginPick = null; },
+  logout: async () => { await store.signOut(); location.reload(); },
+  google: async () => {
+    try { await store.signInGoogle(); } catch (e) { authError(e); }
+  },
+  forgot: async () => {
+    const email = app.querySelector('input[name=email]')?.value.trim() || prompt('Your email:');
+    if (!email) return;
+    try { await store.resetPassword(email); state.authMsg = `Password reset email sent to ${email}.`; } catch (e) { authError(e); }
+  },
+  resend: async () => {
+    try { await store.resendVerification(); state.authMsg = 'Sent! Check your inbox (and spam).'; } catch (e) { authError(e); }
+  },
+  verified: async () => {
+    const u = await store.reloadUser();
+    if (!u.verified) { state.authMsg = "Not confirmed yet. Tap the link in the email first."; return; }
+    onUser(u);
+  },
+  toggleAdmin: (d) => {
+    const l = state.leaders.find((x) => x.id === d.id);
+    if (l) store.update('leaders', l.id, { admin: !l.admin });
+  },
   pickPerson: (d) => { state.personId = d.id; if (d.go) state.tab = d.go; },
   give: (d) => {
     const person = state.people.find((p) => p.id === state.personId);
@@ -340,14 +363,6 @@ const actions = {
     [cats[i], cats[j]] = [cats[j], cats[i]];
     cats.forEach((c, k) => { if (c.order !== k) store.update('categories', c.id, { order: k }); });
   },
-  resetPin: async (d) => {
-    const l = state.leaders.find((x) => x.id === d.id);
-    const pin = prompt(`New PIN for ${l.name} (4–8 digits):`);
-    if (pin === null) return;
-    if (!/^\d{4,8}$/.test(pin)) return alert('PIN must be 4–8 digits.');
-    store.update('leaders', l.id, { pinHash: await hashPin(pin) });
-    toast('PIN updated');
-  },
   export: () => {
     const rows = [['Week starting', 'Person', 'Category', 'Points', 'Entered by', 'Time']];
     const name = (id, fallback) => state.people.find((p) => p.id === id)?.name || fallback || '';
@@ -362,25 +377,52 @@ const actions = {
   },
 };
 
+const AUTH_ERRORS = {
+  'auth/invalid-credential': 'Wrong email or password.',
+  'auth/wrong-password': 'Wrong email or password.',
+  'auth/user-not-found': 'No account with that email. Tap "Create account".',
+  'auth/email-already-in-use': 'That email already has an account. Tap "Sign in" (or "Forgot password?").',
+  'auth/weak-password': 'Password must be at least 6 characters.',
+  'auth/invalid-email': "That email doesn't look right.",
+  'auth/too-many-requests': 'Too many tries. Wait a minute and try again.',
+  'auth/unauthorized-domain': 'This website address is not allowed yet. See README: Authorized domains.',
+  'auth/popup-blocked': 'Pop-up was blocked. Allow pop-ups or use email sign-in.',
+};
+function authError(e) {
+  console.error(e);
+  if (e?.code === 'auth/popup-closed-by-user' || e?.code === 'auth/cancelled-popup-request') return;
+  state.authMsg = AUTH_ERRORS[e?.code] || 'Something went wrong. Please try again.';
+  render();
+}
+
 const forms = {
-  setup: async (f) => {
-    const id = store.add('leaders', { name: f.get('name').trim(), pinHash: await hashPin(f.get('pin')), admin: true });
-    store.set('settings', 'main', { attendancePoints: 10 });
-    setSession(id);
-    state.tab = 'settings';
+  emailAuth: async (f, submitter) => {
+    const email = f.get('email').trim(), pw = f.get('password');
+    state.authMsg = '';
+    try {
+      if (submitter?.value === 'up') await store.signUp(email, pw);
+      else await store.signIn(email, pw);
+    } catch (e) { authError(e); }
   },
-  login: async (f) => {
-    const l = state.leaders.find((x) => x.id === state.loginPick);
-    if (l && l.pinHash === await hashPin(f.get('pin'))) { setSession(l.id); state.loginPick = null; }
-    else { alert('Wrong PIN'); }
+  setup: async (f) => {
+    try {
+      await store.claimSetup(state.user.email, f.get('name').trim());
+      if (!state.settings.length) store.set('settings', 'main', { attendancePoints: 10 });
+      state.tab = 'settings';
+    } catch (e) {
+      console.error(e);
+      state.setupDone = true;
+      state.authMsg = 'Someone already set up this app. Ask them to add you.';
+    }
   },
   addPerson: (f) => { store.add('people', { name: f.get('name').trim() }); },
   addCategory: (f) => {
     const max = Math.max(-1, ...state.categories.map((c) => c.order ?? 0));
     store.add('categories', { name: f.get('name').trim(), points: Number(f.get('points')) || 0, order: max + 1 });
   },
-  addLeader: async (f) => {
-    store.add('leaders', { name: f.get('name').trim(), pinHash: await hashPin(f.get('pin')), admin: f.get('admin') === 'on' });
+  addLeader: (f) => {
+    const email = f.get('email').trim().toLowerCase();
+    store.set('leaders', email, { name: f.get('name').trim(), admin: f.get('admin') === 'on' });
   },
 };
 
@@ -393,8 +435,8 @@ app.addEventListener('click', async (e) => {
 app.addEventListener('submit', async (e) => {
   e.preventDefault();
   const form = e.target;
-  await forms[form.dataset.form]?.(new FormData(form));
-  form.reset();
+  await forms[form.dataset.form]?.(new FormData(form), e.submitter);
+  if (form.isConnected && form.dataset.form !== 'emailAuth') form.reset();
   render();
 });
 app.addEventListener('change', (e) => {
@@ -418,14 +460,10 @@ app.addEventListener('focusout', () => {
 });
 
 /* ---------- start ---------- */
-(async () => {
-  try {
-    store = await createStore(showError);
-  } catch (err) {
-    console.error(err);
-    app.innerHTML = '<p class="center">Could not connect to the database. Check firebase-config.js.</p>';
-    return;
-  }
+let watching = false;
+function startWatching() {
+  if (watching) return;
+  watching = true;
   for (const name of COLLECTIONS) {
     store.watch(name, (docs) => {
       state[name] = docs;
@@ -436,5 +474,37 @@ app.addEventListener('focusout', () => {
       render();
     });
   }
+}
+
+function onUser(user) {
+  state.user = user;
+  state.authMsg = '';
+  if (!user || !user.verified) { state.access = null; return render(); }
+  state.access = 'checking';
+  render();
+  // Am I on the leader list? (Updates live, so access opens as soon as an admin adds me.)
+  store.watchDoc('leaders', user.email, async (doc) => {
+    if (doc) {
+      state.access = 'ok';
+      startWatching();
+    } else if (state.access !== 'ok') {
+      try { state.setupDone = !!(await store.getDoc('meta', 'setup')); } catch { state.setupDone = true; }
+      state.access = 'none';
+    } else {
+      location.reload(); // removed from leader list while signed in
+    }
+    render();
+  }, (err) => { console.error(err); state.access = 'none'; state.setupDone = true; render(); });
+}
+
+(async () => {
+  try {
+    store = await createStore(showError);
+  } catch (err) {
+    console.error(err);
+    app.innerHTML = '<p class="center">Could not connect to the database. Check firebase-config.js.</p>';
+    return;
+  }
+  store.onAuth(onUser);
   render();
 })();
