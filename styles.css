@@ -121,3 +121,16 @@ textarea { width: 100%; padding: 12px; border: 1px solid var(--line); border-rad
 .merge { background: var(--accent-soft); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
 .merge p { margin: 0 0 8px; }
 .merge .chips { justify-content: flex-start; max-height: 30vh; overflow-y: auto; }
+
+/* Points: full-width kid rows */
+.kid-rows { list-style: none; padding: 0; margin: 0; background: var(--card); border-radius: var(--radius); overflow: hidden; }
+.kid-rows li + li { border-top: 1px solid var(--line); }
+.kid-rows button { width: 100%; display: flex; align-items: center; gap: 12px; padding: 16px; text-align: left; min-height: 56px; }
+.kid-rows button:active { background: var(--accent-soft); }
+.kid-rows .name { flex: 1; font-size: 1.05rem; font-weight: 500; }
+.kid-rows .name small { display: block; color: var(--muted); font-size: .78rem; font-weight: 400; }
+.kid-rows b { font-size: 1.05rem; color: var(--accent); min-width: 3ch; text-align: right; }
+.kid-rows .chev { color: var(--muted); font-size: 1.4rem; line-height: 1; }
+.person-nav { display: flex; justify-content: space-between; align-items: center; margin: -4px 0 4px; }
+.person-nav .link { font-size: 1.05rem; padding: 8px 0; }
+.person-head { margin-top: 4px; }

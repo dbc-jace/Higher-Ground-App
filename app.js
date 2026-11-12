@@ -1,6 +1,6 @@
-import { createStore } from './store.js?v=2026.11.12-3';
+import { createStore } from './store.js?v=2026.11.12-4';
 
-const APP_VERSION = '2026.11.12-3';
+const APP_VERSION = '2026.11.12-4';
 
 const COLLECTIONS = ['people', 'categories', 'leaders', 'entries', 'attendance', 'settings'];
 
@@ -183,41 +183,55 @@ function viewPoints() {
   const everyone = people();
   if (!everyone.length) return emptyState('No people yet.', 'Add people in Settings.');
   const t = totals(state.week);
-  // Only kids marked present this week (plus whoever is selected), unless "Show all kids" is on.
   const here = new Set(state.attendance.filter((a) => a.weekId === state.week).map((a) => a.personId));
-  const ppl = state.showAllKids ? everyone : everyone.filter((p) => here.has(p.id) || p.id === state.personId);
+  const ppl = state.showAllKids ? everyone : everyone.filter((p) => here.has(p.id));
   const person = everyone.find((p) => p.id === state.personId);
-  const toggle = `<p class="center small"><button class="link small" data-act="toggleAllKids">${state.showAllKids
-    ? `Show only kids here (${here.size})` : `Show all kids (${everyone.length})`}</button></p>`;
-  if (!ppl.length) {
-    return `<div class="center muted empty"><p><strong>No one is marked present this week.</strong></p>
-      <p>Take attendance first, then come back to give points.</p></div>
-      <button class="primary wide" data-act="tab" data-tab="attendance">Go to Attendance</button>${toggle}`;
-  }
-  const cats = categories();
-  const list = person ? state.entries.filter((e) => e.personId === person.id && e.weekId === state.week).sort((a, b) => b.ts - a.ts) : [];
-  const att = person && state.attendance.find((a) => a.personId === person.id && a.weekId === state.week);
+  if (person) return viewPerson(person, ppl, t);
 
+  const toggle = `
+    <div class="seg">
+      <button class="${state.showAllKids ? '' : 'on'}" data-act="setAllKids" data-v="0">Here this week (${here.size})</button>
+      <button class="${state.showAllKids ? 'on' : ''}" data-act="setAllKids" data-v="1">All kids (${everyone.length})</button>
+    </div>`;
+  if (!ppl.length) {
+    return `${toggle}
+      <div class="center muted empty"><p><strong>No one is marked present this week.</strong></p>
+      <p>Take attendance first, then come back to give points.</p></div>
+      <button class="primary wide" data-act="tab" data-tab="attendance">Go to Attendance</button>`;
+  }
+  return `${toggle}
+    <ul class="kid-rows">
+      ${ppl.map((p) => `<li><button data-act="pickPerson" data-id="${p.id}">
+        <span class="name">${esc(p.name)}${state.showAllKids && !here.has(p.id) ? '<small>not marked here</small>' : ''}</span>
+        <b>${t.get(p.id).pts}</b><span class="chev">›</span></button></li>`).join('')}
+    </ul>`;
+}
+
+function viewPerson(person, ppl, t) {
+  const cats = categories();
+  const list = state.entries.filter((e) => e.personId === person.id && e.weekId === state.week).sort((a, b) => b.ts - a.ts);
+  const att = state.attendance.find((a) => a.personId === person.id && a.weekId === state.week);
+  const i = ppl.findIndex((p) => p.id === person.id);
+  const next = i >= 0 && i < ppl.length - 1 ? ppl[i + 1] : null;
   return `
-    <div class="chips people">
-      ${ppl.map((p) => `<button class="chip ${p.id === state.personId ? 'on' : ''}" data-act="pickPerson" data-id="${p.id}">${esc(p.name)} <b>${t.get(p.id).pts}</b></button>`).join('')}
+    <div class="person-nav">
+      <button class="link" data-act="backToList">‹ Back</button>
+      ${next ? `<button class="link" data-act="pickPerson" data-id="${next.id}">${esc(next.name)} ›</button>` : ''}
     </div>
-    ${toggle}
-    ${!person ? '<p class="center muted">Tap a name to give points.</p>' : `
-      <div class="person-head">
-        <h2>${esc(person.name)}</h2>
-        <div class="big">${t.get(person.id).pts} <small>pts this week</small></div>
-      </div>
-      ${cats.length ? `<div class="cat-grid">
-        ${cats.map((c) => `<button class="cat" data-act="give" data-id="${c.id}"><span>${esc(c.name)}</span><b>+${Number(c.points) || 0}</b></button>`).join('')}
-      </div>` : '<p class="muted center">No categories yet. Add some in Settings.</p>'}
-      <button class="ghost wide" data-act="custom">Custom amount…</button>
-      <h3>This week</h3>
-      <ul class="log">
-        ${att ? `<li><span>Attendance</span><b>+${Number(att.points) || 0}</b><span></span></li>` : ''}
-        ${list.map((e) => `<li><span>${esc(e.categoryName)}<small>${esc(e.leaderName || '')}</small></span><b>${e.points >= 0 ? '+' : ''}${e.points}</b><button class="x" data-act="delEntry" data-id="${e.id}" aria-label="Remove">✕</button></li>`).join('')}
-        ${!list.length && !att ? '<li class="muted">Nothing yet.</li>' : ''}
-      </ul>`}`;
+    <div class="person-head">
+      <h2>${esc(person.name)}</h2>
+      <div class="big">${t.get(person.id).pts} <small>pts this week</small></div>
+    </div>
+    ${cats.length ? `<div class="cat-grid">
+      ${cats.map((c) => `<button class="cat" data-act="give" data-id="${c.id}"><span>${esc(c.name)}</span><b>+${Number(c.points) || 0}</b></button>`).join('')}
+    </div>` : '<p class="muted center">No categories yet. Add some in Settings.</p>'}
+    <button class="ghost wide" data-act="custom">Custom amount…</button>
+    <h3>This week</h3>
+    <ul class="log">
+      ${att ? `<li><span>Attendance</span><b>+${Number(att.points) || 0}</b><span></span></li>` : ''}
+      ${list.map((e) => `<li><span>${esc(e.categoryName)}<small>${esc(e.leaderName || '')}</small></span><b>${e.points >= 0 ? '+' : ''}${e.points}</b><button class="x" data-act="delEntry" data-id="${e.id}" aria-label="Remove">✕</button></li>`).join('')}
+      ${!list.length && !att ? '<li class="muted">Nothing yet.</li>' : ''}
+    </ul>`;
 }
 
 function viewAttendance() {
@@ -344,7 +358,7 @@ function addEntry(person, name, points, categoryId = null) {
 }
 
 const actions = {
-  tab: (d) => { state.tab = d.tab; },
+  tab: (d) => { state.tab = d.tab; state.personId = null; requestAnimationFrame(() => window.scrollTo(0, 0)); },
   week: (d) => { state.week = shiftWeek(state.week, Number(d.n)); },
   thisWeek: () => { state.week = weekStart(new Date()); },
   board: (d) => { state.board = d.v; },
@@ -369,7 +383,17 @@ const actions = {
     const l = state.leaders.find((x) => x.id === d.id);
     if (l) store.update('leaders', l.id, { admin: !l.admin });
   },
-  pickPerson: (d) => { state.personId = d.id; if (d.go) state.tab = d.go; },
+  pickPerson: (d) => {
+    if (!state.personId) state.listScroll = window.scrollY;
+    state.personId = d.id;
+    if (d.go) state.tab = d.go;
+    requestAnimationFrame(() => window.scrollTo(0, 0));
+  },
+  backToList: () => {
+    state.personId = null;
+    const y = state.listScroll || 0;
+    requestAnimationFrame(() => window.scrollTo(0, y));
+  },
   give: (d) => {
     const person = state.people.find((p) => p.id === state.personId);
     const cat = state.categories.find((c) => c.id === d.id);
@@ -412,7 +436,7 @@ const actions = {
     cats.forEach((c, k) => { if (c.order !== k) store.update('categories', c.id, { order: k }); });
   },
   importCancel: () => { state.importPreview = null; },
-  toggleAllKids: () => { state.showAllKids = !state.showAllKids; },
+  setAllKids: (d) => { state.showAllKids = d.v === '1'; },
   mergeStart: (d) => { state.mergeFrom = d.id; window.scrollTo({ top: 0, behavior: 'smooth' }); },
   mergeCancel: () => { state.mergeFrom = null; },
   mergeInto: (d) => {
