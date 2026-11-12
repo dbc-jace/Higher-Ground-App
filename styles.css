@@ -118,3 +118,6 @@ label.row { display: flex; justify-content: space-between; font-weight: 500; }
 textarea { width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: inherit; font: 15px/1.4 ui-monospace, Menlo, monospace; resize: vertical; }
 .preview { list-style: none; padding: 0; margin: 0 0 10px; max-height: 40vh; overflow-y: auto; }
 .preview li { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.merge { background: var(--accent-soft); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+.merge p { margin: 0 0 8px; }
+.merge .chips { justify-content: flex-start; max-height: 30vh; overflow-y: auto; }

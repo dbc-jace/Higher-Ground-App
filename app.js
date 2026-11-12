@@ -242,12 +242,14 @@ function viewSettings() {
   return `
     <section class="card">
       <h2>People</h2>
+      ${mergePanelHtml()}
       <form data-form="addPerson" class="row">
         <input name="name" placeholder="Name" required><button class="primary">Add</button>
       </form>
       <ul class="edit">
         ${people().map((p) => `<li>
           <input value="${esc(p.name)}" data-col="people" data-id="${p.id}" data-field="name" aria-label="Name">
+          <button class="ghost small" data-act="mergeStart" data-id="${p.id}">Merge</button>
           <button class="x" data-act="del" data-col="people" data-id="${p.id}" data-name="${esc(p.name)}" aria-label="Delete">✕</button>
         </li>`).join('')}
       </ul>
@@ -395,6 +397,17 @@ const actions = {
     cats.forEach((c, k) => { if (c.order !== k) store.update('categories', c.id, { order: k }); });
   },
   importCancel: () => { state.importPreview = null; },
+  mergeStart: (d) => { state.mergeFrom = d.id; window.scrollTo({ top: 0, behavior: 'smooth' }); },
+  mergeCancel: () => { state.mergeFrom = null; },
+  mergeInto: (d) => {
+    const from = state.people.find((p) => p.id === state.mergeFrom);
+    const to = state.people.find((p) => p.id === d.id);
+    if (!from || !to) return;
+    if (!confirm(`Move all of ${from.name}'s points and attendance to ${to.name}, then remove ${from.name}?`)) return;
+    mergeKids(from.id, to.id);
+    state.mergeFrom = null;
+    toast(`Merged ${esc(from.name)} into ${esc(to.name)}`);
+  },
   importRun: () => {
     const p = state.importPreview;
     if (!p) return;
@@ -464,6 +477,48 @@ function parseImport(text) {
     }
   }
   return out;
+}
+
+function mergePanelHtml() {
+  const from = state.people.find((p) => p.id === state.mergeFrom);
+  if (!from) return '';
+  const t = totals(null);
+  return `
+    <div class="merge">
+      <p><strong>Merge ${esc(from.name)}</strong> (${t.get(from.id)?.pts ?? 0} pts) into which kid?</p>
+      <p class="muted small">All of ${esc(from.name)}'s points and attendance move to the kid you pick, then ${esc(from.name)} is removed.</p>
+      <div class="chips">${people().filter((p) => p.id !== from.id).map((p) =>
+        `<button class="chip" data-act="mergeInto" data-id="${p.id}">${esc(p.name)} <b>${t.get(p.id)?.pts ?? 0}</b></button>`).join('')}</div>
+      <button class="ghost wide" data-act="mergeCancel">Cancel</button>
+    </div>`;
+}
+
+function mergeKids(fromId, toId) {
+  const to = state.people.find((p) => p.id === toId);
+  // Points: move every entry; starting totals combine into one.
+  for (const e of state.entries.filter((x) => x.personId === fromId)) {
+    if (e.weekId === CARRYOVER) {
+      const targetId = 'carryover_' + toId;
+      const existing = state.entries.find((x) => x.id === targetId);
+      const { id, ...rest } = e;
+      store.set('entries', targetId, { ...rest, personId: toId, personName: to.name,
+        points: (Number(existing?.points) || 0) + (Number(e.points) || 0) });
+      if (e.id !== targetId) store.remove('entries', e.id);
+    } else {
+      store.update('entries', e.id, { personId: toId, personName: to.name });
+    }
+  }
+  // Attendance: one per kid per week, so skip weeks the target was already marked.
+  for (const a of state.attendance.filter((x) => x.personId === fromId)) {
+    const newId = `${a.weekId}_${toId}`;
+    if (!state.attendance.some((x) => x.id === newId)) {
+      const { id, ...rest } = a;
+      store.set('attendance', newId, { ...rest, personId: toId, personName: to.name });
+    }
+    store.remove('attendance', a.id);
+  }
+  store.remove('people', fromId);
+  if (state.personId === fromId) state.personId = toId;
 }
 
 function importPreviewHtml() {
