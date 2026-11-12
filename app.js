@@ -1,4 +1,6 @@
-import { createStore } from './store.js';
+import { createStore } from './store.js?v=2026.11.12-1';
+
+const APP_VERSION = '2026.11.12-1';
 
 const COLLECTIONS = ['people', 'categories', 'leaders', 'entries', 'attendance', 'settings'];
 
@@ -312,6 +314,7 @@ function viewSettings() {
     <section class="card">
       <h2>Backup</h2>
       <button class="ghost wide" data-act="export">Download all points (CSV)</button>
+      <p class="muted small center">App version ${APP_VERSION}</p>
     </section>`;
 }
 
