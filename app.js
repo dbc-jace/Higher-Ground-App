@@ -301,7 +301,7 @@ function viewSettings() {
 
     <section class="card">
       <h2>Import</h2>
-      <p class="muted small">Paste a list (or copy two columns straight from Google Sheets). Put <b>CATEGORIES</b> on its own line, then one "name, points" per line. Then <b>KIDS</b> on its own line, then one "name, current total" per line. Totals are added as a one-time "Starting total" that counts toward All time.</p>
+      <p class="muted small">Paste a list (or copy two columns straight from Google Sheets). Put <b>CATEGORIES</b> on its own line, then one "name, points" per line. Then <b>KIDS</b> on its own line, then one "name, current total" per line. Totals are added as a one-time "Starting total" that counts toward All time. Optional: <b>ATTENDANCE</b>, then "name: 2026-09-16, 2026-09-23" to record past weeks attended (no extra points).</p>
       ${state.importPreview ? `<div id="import-preview">${importPreviewHtml()}</div>` : `
       <form data-form="importPreview">
         <textarea name="text" rows="8" placeholder="CATEGORIES&#10;Memory Verse, 10&#10;Brought Bible, 5&#10;KIDS&#10;Sam, 120&#10;Ava, 85" required></textarea>
@@ -419,9 +419,13 @@ const actions = {
       else store.add('categories', { name: c.name, points: c.points, order: ++order });
     }
     const ppl = new Map(state.people.map((x) => [norm(x.name), x]));
+    const personId = (name) => {
+      let id = ppl.get(norm(name))?.id;
+      if (!id) { id = store.add('people', { name }); ppl.set(norm(name), { id, name }); }
+      return id;
+    };
     for (const k of p.kids) {
-      let id = ppl.get(norm(k.name))?.id;
-      if (!id) id = store.add('people', { name: k.name });
+      const id = personId(k.name);
       // One starting-total entry per kid; re-importing replaces it instead of doubling.
       const entryId = 'carryover_' + id;
       if (k.total) {
@@ -434,7 +438,19 @@ const actions = {
         store.remove('entries', entryId);
       }
     }
-    toast(`Imported ${p.categories.length} categories and ${p.kids.length} kids`);
+    // Past attendance: 0 points (already counted in starting totals). Weeks already marked in the app are left as-is.
+    let marks = 0;
+    for (const a of p.attendance) {
+      const id = personId(a.name);
+      for (const w of a.weeks) {
+        const docId = `${w}_${id}`;
+        if (state.attendance.some((x) => x.id === docId)) continue;
+        store.set('attendance', docId, { weekId: w, personId: id, personName: a.name, points: 0, imported: true,
+          leaderName: me()?.name || '', ts: Date.now() });
+        marks++;
+      }
+    }
+    toast(`Imported ${p.categories.length} categories, ${p.kids.length} kids, ${marks} attendance marks`);
     state.importPreview = null;
   },
   export: () => {
@@ -456,7 +472,7 @@ const CARRYOVER = 'carryover';
 const norm = (s) => String(s).trim().toLowerCase().replace(/\s+/g, ' ');
 
 function parseImport(text) {
-  const out = { categories: [], kids: [], skipped: [] };
+  const out = { categories: [], kids: [], attendance: [], skipped: [] };
   let section = null;
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
@@ -464,6 +480,15 @@ function parseImport(text) {
     const head = norm(line).replace(/[:\t,]+$/, '');
     if (/^(categories|category)$/.test(head)) { section = 'categories'; continue; }
     if (/^(kids|people|students|names)$/.test(head)) { section = 'kids'; continue; }
+    if (/^(attendance|attended)$/.test(head)) { section = 'attendance'; continue; }
+    if (section === 'attendance') {
+      // "Name: 2026-09-16, 2026-09-23" -> one attendance mark per date (week).
+      const dates = line.match(/\d{4}-\d{2}-\d{2}/g) || [];
+      const name = line.split(/\d{4}-\d{2}-\d{2}/)[0].replace(/[\s,:\t-]+$/, '').trim();
+      if (!name || !dates.length) { out.skipped.push(line); continue; }
+      out.attendance.push({ name, weeks: [...new Set(dates.map((d) => weekStart(parseYmd(d))))] });
+      continue;
+    }
     // "name<TAB>number" or "name, number" or "name - 12" — number is the last numeric field.
     const m = line.match(/^(.*?)[\s,\t:=-]+(-?\d+(?:\.\d+)?)\s*(?:pts?|points?)?$/i);
     const name = (m ? m[1] : line).replace(/[\t,]+$/, '').trim();
@@ -526,11 +551,13 @@ function importPreviewHtml() {
   const existingP = new Set(state.people.map((x) => norm(x.name)));
   const existingC = new Set(state.categories.map((x) => norm(x.name)));
   return `
-    <p><strong>${p.categories.length}</strong> categories · <strong>${p.kids.length}</strong> kids</p>
+    <p><strong>${p.categories.length}</strong> categories · <strong>${p.kids.length}</strong> kids${p.attendance.length ? ` · <strong>${p.attendance.reduce((n, a) => n + a.weeks.length, 0)}</strong> attendance marks` : ''}</p>
     ${p.categories.length ? `<h3>Categories</h3><ul class="preview">${p.categories.map((c) =>
       `<li><span>${esc(c.name)}${existingC.has(norm(c.name)) ? ' <em class="badge">update</em>' : ''}</span><b>${c.points}</b></li>`).join('')}</ul>` : ''}
     ${p.kids.length ? `<h3>Kids & starting totals</h3><ul class="preview">${p.kids.map((k) =>
       `<li><span>${esc(k.name)}${existingP.has(norm(k.name)) ? ' <em class="badge">exists</em>' : ''}</span><b>${k.total}</b></li>`).join('')}</ul>` : ''}
+    ${p.attendance.length ? `<h3>Times attended (no extra points)</h3><ul class="preview">${p.attendance.map((a) =>
+      `<li><span>${esc(a.name)}${existingP.has(norm(a.name)) ? ' <em class="badge">exists</em>' : ''}</span><b>${a.weeks.length}</b></li>`).join('')}</ul>` : ''}
     ${p.skipped.length ? `<p class="msg">Couldn't read ${p.skipped.length} line(s): ${p.skipped.map(esc).join(' · ')}</p>` : ''}
     <div class="row">
       <button class="ghost grow" data-act="importCancel">Cancel</button>
@@ -559,8 +586,8 @@ function authError(e) {
 const forms = {
   importPreview: (f) => {
     const parsed = parseImport(f.get('text'));
-    if (!parsed.categories.length && !parsed.kids.length) {
-      alert('Nothing found. Make sure you have a line that says CATEGORIES or KIDS above each list.');
+    if (!parsed.categories.length && !parsed.kids.length && !parsed.attendance.length) {
+      alert('Nothing found. Make sure you have a line that says CATEGORIES, KIDS, or ATTENDANCE above each list.');
       return;
     }
     state.importPreview = parsed;
