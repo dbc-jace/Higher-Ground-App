@@ -115,3 +115,6 @@ label.row { display: flex; justify-content: space-between; font-weight: 500; }
 .msg { background: var(--accent-soft); color: var(--text); padding: 10px 12px; border-radius: 10px; font-size: .9rem; }
 .email { display: block; color: var(--muted); font-size: .8rem; word-break: break-all; }
 .card form > input { margin-bottom: 8px; }
+textarea { width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: inherit; font: 15px/1.4 ui-monospace, Menlo, monospace; resize: vertical; }
+.preview { list-style: none; padding: 0; margin: 0 0 10px; max-height: 40vh; overflow-y: auto; }
+.preview li { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--line); }

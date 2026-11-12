@@ -277,6 +277,16 @@ function viewSettings() {
     </section>
 
     <section class="card">
+      <h2>Import</h2>
+      <p class="muted small">Paste a list (or copy two columns straight from Google Sheets). Put <b>CATEGORIES</b> on its own line, then one "name, points" per line. Then <b>KIDS</b> on its own line, then one "name, current total" per line. Totals are added as a one-time "Starting total" that counts toward All time.</p>
+      ${state.importPreview ? importPreviewHtml() : `
+      <form data-form="importPreview">
+        <textarea name="text" rows="8" placeholder="CATEGORIES&#10;Memory Verse, 10&#10;Brought Bible, 5&#10;KIDS&#10;Sam, 120&#10;Ava, 85" required></textarea>
+        <button class="primary wide">Preview import</button>
+      </form>`}
+    </section>
+
+    <section class="card">
       <h2>Backup</h2>
       <button class="ghost wide" data-act="export">Download all points (CSV)</button>
     </section>`;
@@ -363,6 +373,36 @@ const actions = {
     [cats[i], cats[j]] = [cats[j], cats[i]];
     cats.forEach((c, k) => { if (c.order !== k) store.update('categories', c.id, { order: k }); });
   },
+  importCancel: () => { state.importPreview = null; },
+  importRun: () => {
+    const p = state.importPreview;
+    if (!p) return;
+    const cats = new Map(state.categories.map((c) => [norm(c.name), c]));
+    let order = Math.max(-1, ...state.categories.map((c) => c.order ?? 0));
+    for (const c of p.categories) {
+      const ex = cats.get(norm(c.name));
+      if (ex) store.update('categories', ex.id, { points: c.points });
+      else store.add('categories', { name: c.name, points: c.points, order: ++order });
+    }
+    const ppl = new Map(state.people.map((x) => [norm(x.name), x]));
+    for (const k of p.kids) {
+      let id = ppl.get(norm(k.name))?.id;
+      if (!id) id = store.add('people', { name: k.name });
+      // One starting-total entry per kid; re-importing replaces it instead of doubling.
+      const entryId = 'carryover_' + id;
+      if (k.total) {
+        store.set('entries', entryId, {
+          weekId: CARRYOVER, personId: id, personName: k.name,
+          categoryId: null, categoryName: 'Starting total', points: k.total,
+          leaderEmail: state.user.email, leaderName: me()?.name || '', ts: Date.now(),
+        });
+      } else if (state.entries.some((e) => e.id === entryId)) {
+        store.remove('entries', entryId);
+      }
+    }
+    toast(`Imported ${p.categories.length} categories and ${p.kids.length} kids`);
+    state.importPreview = null;
+  },
   export: () => {
     const rows = [['Week starting', 'Person', 'Category', 'Points', 'Entered by', 'Time']];
     const name = (id, fallback) => state.people.find((p) => p.id === id)?.name || fallback || '';
@@ -376,6 +416,51 @@ const actions = {
     a.click();
   },
 };
+
+/* ---------- import ---------- */
+const CARRYOVER = 'carryover';
+const norm = (s) => String(s).trim().toLowerCase().replace(/\s+/g, ' ');
+
+function parseImport(text) {
+  const out = { categories: [], kids: [], skipped: [] };
+  let section = null;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const head = norm(line).replace(/[:\t,]+$/, '');
+    if (/^(categories|category)$/.test(head)) { section = 'categories'; continue; }
+    if (/^(kids|people|students|names)$/.test(head)) { section = 'kids'; continue; }
+    // "name<TAB>number" or "name, number" or "name - 12" — number is the last numeric field.
+    const m = line.match(/^(.*?)[\s,\t:=-]+(-?\d+(?:\.\d+)?)\s*(?:pts?|points?)?$/i);
+    const name = (m ? m[1] : line).replace(/[\t,]+$/, '').trim();
+    const num = m ? Number(m[2]) : null;
+    if (!name || !section) { out.skipped.push(line); continue; }
+    if (section === 'categories') {
+      if (num === null) { out.skipped.push(line); continue; }
+      out.categories.push({ name, points: num });
+    } else {
+      out.kids.push({ name, total: num ?? 0 });
+    }
+  }
+  return out;
+}
+
+function importPreviewHtml() {
+  const p = state.importPreview;
+  const existingP = new Set(state.people.map((x) => norm(x.name)));
+  const existingC = new Set(state.categories.map((x) => norm(x.name)));
+  return `
+    <p><strong>${p.categories.length}</strong> categories · <strong>${p.kids.length}</strong> kids</p>
+    ${p.categories.length ? `<h3>Categories</h3><ul class="preview">${p.categories.map((c) =>
+      `<li><span>${esc(c.name)}${existingC.has(norm(c.name)) ? ' <em class="badge">update</em>' : ''}</span><b>${c.points}</b></li>`).join('')}</ul>` : ''}
+    ${p.kids.length ? `<h3>Kids & starting totals</h3><ul class="preview">${p.kids.map((k) =>
+      `<li><span>${esc(k.name)}${existingP.has(norm(k.name)) ? ' <em class="badge">exists</em>' : ''}</span><b>${k.total}</b></li>`).join('')}</ul>` : ''}
+    ${p.skipped.length ? `<p class="msg">Couldn't read ${p.skipped.length} line(s): ${p.skipped.map(esc).join(' · ')}</p>` : ''}
+    <div class="row">
+      <button class="ghost grow" data-act="importCancel">Cancel</button>
+      <button class="primary grow" data-act="importRun">Import</button>
+    </div>`;
+}
 
 const AUTH_ERRORS = {
   'auth/invalid-credential': 'Wrong email or password.',
@@ -396,6 +481,14 @@ function authError(e) {
 }
 
 const forms = {
+  importPreview: (f) => {
+    const parsed = parseImport(f.get('text'));
+    if (!parsed.categories.length && !parsed.kids.length) {
+      alert('Nothing found. Make sure you have a line that says CATEGORIES or KIDS above each list.');
+      return;
+    }
+    state.importPreview = parsed;
+  },
   emailAuth: async (f, submitter) => {
     const email = f.get('email').trim(), pw = f.get('password');
     state.authMsg = '';
