@@ -40,6 +40,17 @@ const state = {
 };
 let store;
 
+// One-tap import links: #import=<base64url text>. The part after # never leaves the phone.
+let pendingImport = (() => {
+  const m = location.hash.match(/^#import=([A-Za-z0-9_-]+)/);
+  if (!m) return null;
+  try {
+    const b64 = m[1].replace(/-/g, '+').replace(/_/g, '/');
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  } catch { return null; }
+})();
+
 const settings = () => state.settings.find((s) => s.id === 'main') || {};
 const attendancePoints = () => Number(settings().attendancePoints ?? 10);
 const me = () => state.leaders.find((l) => l.id === state.user?.email);
@@ -81,6 +92,16 @@ function render() {
   }
 
   const leader = me();
+  if (pendingImport) {
+    if (leader.admin) {
+      state.importPreview = parseImport(pendingImport);
+      state.tab = 'settings';
+    } else {
+      toast('Only admins can import.');
+    }
+    pendingImport = null;
+    history.replaceState(null, '', location.pathname + location.search);
+  }
   if (state.tab === 'settings' && !leader.admin) state.tab = 'points';
   const showWeek = state.tab !== 'settings' && !(state.tab === 'board' && state.board === 'all');
   const isThisWeek = state.week === weekStart(new Date());
@@ -279,7 +300,7 @@ function viewSettings() {
     <section class="card">
       <h2>Import</h2>
       <p class="muted small">Paste a list (or copy two columns straight from Google Sheets). Put <b>CATEGORIES</b> on its own line, then one "name, points" per line. Then <b>KIDS</b> on its own line, then one "name, current total" per line. Totals are added as a one-time "Starting total" that counts toward All time.</p>
-      ${state.importPreview ? importPreviewHtml() : `
+      ${state.importPreview ? `<div id="import-preview">${importPreviewHtml()}</div>` : `
       <form data-form="importPreview">
         <textarea name="text" rows="8" placeholder="CATEGORIES&#10;Memory Verse, 10&#10;Brought Bible, 5&#10;KIDS&#10;Sam, 120&#10;Ava, 85" required></textarea>
         <button class="primary wide">Preview import</button>
