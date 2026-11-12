@@ -1,6 +1,6 @@
-import { createStore } from './store.js?v=2026.11.12-1';
+import { createStore } from './store.js?v=2026.11.12-2';
 
-const APP_VERSION = '2026.11.12-1';
+const APP_VERSION = '2026.11.12-2';
 
 const COLLECTIONS = ['people', 'categories', 'leaders', 'entries', 'attendance', 'settings'];
 
@@ -31,7 +31,8 @@ function weekLabel(id) {
 const state = {
   loaded: new Set(),
   people: [], categories: [], leaders: [], entries: [], attendance: [], settings: [],
-  tab: 'points',
+  tab: 'attendance',
+  showAllKids: false,
   week: weekStart(new Date()),
   personId: null,
   board: 'week',
@@ -104,12 +105,12 @@ function render() {
     pendingImport = null;
     history.replaceState(null, '', location.pathname + location.search);
   }
-  if (state.tab === 'settings' && !leader.admin) state.tab = 'points';
+  if (state.tab === 'settings' && !leader.admin) state.tab = 'attendance';
   const showWeek = state.tab !== 'settings' && !(state.tab === 'board' && state.board === 'all');
   const isThisWeek = state.week === weekStart(new Date());
 
   const body = { points: viewPoints, attendance: viewAttendance, board: viewBoard, settings: viewSettings }[state.tab]();
-  const tabs = [['points', '★', 'Points'], ['attendance', '✓', 'Attendance'], ['board', '🏆', 'Board']];
+  const tabs = [['attendance', '✓', 'Attendance'], ['points', '★', 'Points'], ['board', '🏆', 'Board']];
   if (leader.admin) tabs.push(['settings', '⚙', 'Settings']);
 
   app.innerHTML = `
@@ -179,10 +180,20 @@ function renderNoAccess() {
 }
 
 function viewPoints() {
-  const ppl = people();
-  if (!ppl.length) return emptyState('No people yet.', 'Add people in Settings.');
+  const everyone = people();
+  if (!everyone.length) return emptyState('No people yet.', 'Add people in Settings.');
   const t = totals(state.week);
-  const person = ppl.find((p) => p.id === state.personId);
+  // Only kids marked present this week (plus whoever is selected), unless "Show all kids" is on.
+  const here = new Set(state.attendance.filter((a) => a.weekId === state.week).map((a) => a.personId));
+  const ppl = state.showAllKids ? everyone : everyone.filter((p) => here.has(p.id) || p.id === state.personId);
+  const person = everyone.find((p) => p.id === state.personId);
+  const toggle = `<p class="center small"><button class="link small" data-act="toggleAllKids">${state.showAllKids
+    ? `Show only kids here (${here.size})` : `Show all kids (${everyone.length})`}</button></p>`;
+  if (!ppl.length) {
+    return `<div class="center muted empty"><p><strong>No one is marked present this week.</strong></p>
+      <p>Take attendance first, then come back to give points.</p></div>
+      <button class="primary wide" data-act="tab" data-tab="attendance">Go to Attendance</button>${toggle}`;
+  }
   const cats = categories();
   const list = person ? state.entries.filter((e) => e.personId === person.id && e.weekId === state.week).sort((a, b) => b.ts - a.ts) : [];
   const att = person && state.attendance.find((a) => a.personId === person.id && a.weekId === state.week);
@@ -191,6 +202,7 @@ function viewPoints() {
     <div class="chips people">
       ${ppl.map((p) => `<button class="chip ${p.id === state.personId ? 'on' : ''}" data-act="pickPerson" data-id="${p.id}">${esc(p.name)} <b>${t.get(p.id).pts}</b></button>`).join('')}
     </div>
+    ${toggle}
     ${!person ? '<p class="center muted">Tap a name to give points.</p>' : `
       <div class="person-head">
         <h2>${esc(person.name)}</h2>
@@ -400,6 +412,7 @@ const actions = {
     cats.forEach((c, k) => { if (c.order !== k) store.update('categories', c.id, { order: k }); });
   },
   importCancel: () => { state.importPreview = null; },
+  toggleAllKids: () => { state.showAllKids = !state.showAllKids; },
   mergeStart: (d) => { state.mergeFrom = d.id; window.scrollTo({ top: 0, behavior: 'smooth' }); },
   mergeCancel: () => { state.mergeFrom = null; },
   mergeInto: (d) => {
