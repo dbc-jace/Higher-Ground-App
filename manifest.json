@@ -1,0 +1,9 @@
+{
+  "name": "Higher Ground Points",
+  "short_name": "Higher Ground",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f5f5f7",
+  "theme_color": "#4f46e5",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

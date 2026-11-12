@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Anyone who has the app link can read and write these collections.
+    // Leader PINs are checked inside the app (a "keep honest people honest" lock).
+    match /{col}/{id} {
+      allow read, write: if col in ['people', 'categories', 'leaders', 'entries', 'attendance', 'settings'];
+    }
+  }
+}
